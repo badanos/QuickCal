@@ -118,6 +118,7 @@ export default function QuickCal({ onSignOut }) {
   const [budgetVal, setBudgetVal] = useState("");
   const [toast, setToast] = useState(null); // last added entry index
   const [confirmDel, setConfirmDel] = useState(null); // entry to delete
+  const [confirmDelFood, setConfirmDelFood] = useState(null); // custom food to delete
   const [customFoods, setCustomFoods] = useState([]);
   const [variantIdx, setVariantIdx] = useState(0);
   const [variantPrefs, setVariantPrefs] = useState({});
@@ -174,6 +175,14 @@ export default function QuickCal({ onSignOut }) {
     setEntries(e);
     await save("week:" + wk, e);
     setConfirmDel(null);
+  }
+
+  async function removeCustomFood(name) {
+    const cf = customFoods.filter((f) => f.n !== name);
+    setCustomFoods(cf);
+    await save("customFoods", cf);
+    setConfirmDelFood(null);
+    setPickedFood(null);
   }
 
   async function saveBudget() {
@@ -450,6 +459,44 @@ export default function QuickCal({ onSignOut }) {
                   <span style={{ fontSize: 22 }}>+</span>
                   <span style={S.foodName}>ADD</span>
                 </button>
+              ) : openCat === "custom" ? (
+                <div
+                  key={f.n}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                  }}
+                >
+                  <button
+                    style={{
+                      ...S.foodBtn,
+                      position: "relative",
+                      left: 0,
+                      top: 0,
+                      transform: "none",
+                      borderColor: CAT_META.custom.color + "55",
+                    }}
+                    onClick={() => {
+                      setPickedFood(f);
+                      setQty(1);
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }}>{f.e}</span>
+                    <span style={S.foodName}>{f.n}</span>
+                  </button>
+                  <button
+                    style={S.foodDelBadge}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelFood(f);
+                    }}
+                    aria-label={`Remove ${f.n}`}
+                  >
+                    ✕
+                  </button>
+                </div>
               ) : (
                 <button
                   key={f.n}
@@ -475,6 +522,32 @@ export default function QuickCal({ onSignOut }) {
             <button style={S.closeX} onClick={() => setOpenCat(null)}>
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* delete custom food confirmation */}
+      {confirmDelFood && (
+        <div style={S.overlay} onClick={() => setConfirmDelFood(null)}>
+          <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.sheetTitle}>
+              Remove {confirmDelFood.n}?
+              <span style={S.sheetSub}>It will no longer appear in CUSTOM.</span>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                style={{ ...S.addBtn, background: "#1A2233", color: "#8FA3BC" }}
+                onClick={() => setConfirmDelFood(null)}
+              >
+                CANCEL
+              </button>
+              <button
+                style={{ ...S.addBtn, background: "#FF5A5A", color: "#200606" }}
+                onClick={() => removeCustomFood(confirmDelFood.n)}
+              >
+                REMOVE
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -841,6 +914,24 @@ const styles = {
     gap: 4,
   },
   sheetSub: { fontSize: 11, color: "#5A6B80", fontWeight: 400 },
+  foodDelBadge: {
+    position: "absolute",
+    right: -4,
+    top: -4,
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    background: "#1A2233",
+    border: "1px solid #2A3548",
+    color: "#FF6FB5",
+    fontFamily: mono,
+    fontSize: 10,
+    lineHeight: 1,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   stepper: {
     display: "flex",
     alignItems: "center",
