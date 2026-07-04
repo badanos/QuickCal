@@ -1,0 +1,2 @@
+# QuickCal
+Quick calorie tracking
