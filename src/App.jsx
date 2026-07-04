@@ -369,7 +369,9 @@ export default function QuickCal({ onSignOut }) {
                           day: "numeric",
                         })}
                   </span>
-                  <span>{list.reduce((s, e) => s + e.kcal, 0).toLocaleString()}</span>
+                  <span style={{ color: list.reduce((s, e) => s + e.kcal, 0) > budget / 7 ? "#FF5A5A" : "#7DE07D" }}>
+                    {list.reduce((s, e) => s + e.kcal, 0).toLocaleString()}
+                  </span>
                 </div>
                 {[...list].reverse().map((e) => (
                   <div key={e.t} style={S.logRow}>
