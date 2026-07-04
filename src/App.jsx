@@ -213,6 +213,9 @@ export default function QuickCal({ onSignOut }) {
 
       {/* header */}
       <div style={S.header}>
+        <div style={S.todayLabel}>
+          {new Date().toLocaleDateString("en-GB", { weekday: "long" }).toUpperCase()}
+        </div>
         <div style={S.headerRow}>
           <span style={S.eyebrow}>WEEK BUDGET</span>
           {budgetEdit ? (
@@ -582,6 +585,7 @@ const styles = {
   header: { width: "100%", maxWidth: 360, textAlign: "center" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   eyebrow: { fontSize: 11, letterSpacing: 2, color: "#5A6B80" },
+  todayLabel: { fontSize: 11, letterSpacing: 3, color: "#5A6B80", marginBottom: 8 },
   budgetBtn: {
     background: "none",
     border: "none",
