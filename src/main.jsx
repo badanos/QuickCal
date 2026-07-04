@@ -21,27 +21,50 @@ function Gate() {
   if (!session) {
     return (
       <Center>
-        <button
-          onClick={() =>
-            supabase.auth.signInWithOAuth({
-              provider: "github",
-              options: { redirectTo: window.location.origin },
-            })
-          }
-          style={{
-            padding: "14px 28px",
-            borderRadius: 12,
-            background: "#D7E0EA",
-            border: "none",
-            fontFamily: mono,
-            fontSize: 14,
-            fontWeight: 700,
-            letterSpacing: 1,
-            cursor: "pointer",
-          }}
-        >
-          SIGN IN WITH GITHUB
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <button
+            onClick={() =>
+              supabase.auth.signInWithOAuth({
+                provider: "github",
+                options: { redirectTo: window.location.origin },
+              })
+            }
+            style={{
+              padding: "14px 28px",
+              borderRadius: 12,
+              background: "#D7E0EA",
+              border: "none",
+              fontFamily: mono,
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: 1,
+              cursor: "pointer",
+            }}
+          >
+            SIGN IN WITH GITHUB
+          </button>
+          <button
+            onClick={() =>
+              supabase.auth.signInWithOAuth({
+                provider: "google",
+                options: { redirectTo: window.location.origin },
+              })
+            }
+            style={{
+              padding: "14px 28px",
+              borderRadius: 12,
+              background: "#D7E0EA",
+              border: "none",
+              fontFamily: mono,
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: 1,
+              cursor: "pointer",
+            }}
+          >
+            SIGN IN WITH GOOGLE
+          </button>
+        </div>
       </Center>
     );
   }
