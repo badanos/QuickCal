@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { load, save } from "./storage";
+import { load, save, loadPrefixed } from "./storage";
 
 // ---------- data ----------
 const FOODS = {
@@ -124,6 +124,8 @@ export default function QuickCal({ onSignOut }) {
   const [addFoodOpen, setAddFoodOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newKcal, setNewKcal] = useState("");
+  const [pastWeeksOpen, setPastWeeksOpen] = useState(false);
+  const [pastWeeks, setPastWeeks] = useState(null); // null = not fetched yet
   const toastTimer = useRef(null);
 
   useEffect(() => {
@@ -181,6 +183,23 @@ export default function QuickCal({ onSignOut }) {
       await save("budget", v);
     }
     setBudgetEdit(false);
+  }
+
+  async function togglePastWeeks() {
+    const opening = !pastWeeksOpen;
+    setPastWeeksOpen(opening);
+    if (opening && pastWeeks === null) {
+      const rows = await loadPrefixed("week:");
+      const weeks = rows
+        .filter((r) => r.key !== "week:" + wk)
+        .map((r) => ({
+          key: r.key,
+          start: r.key.slice(5),
+          total: (r.value || []).reduce((s, e) => s + e.kcal, 0),
+        }))
+        .sort((a, b) => (a.start < b.start ? 1 : -1));
+      setPastWeeks(weeks);
+    }
   }
 
   async function saveNewFood() {
@@ -290,6 +309,34 @@ export default function QuickCal({ onSignOut }) {
           );
         })}
       </div>
+
+      {/* completed weeks */}
+      {loaded && (
+        <div style={S.logWrap}>
+          <button style={S.pastWeeksBtn} onClick={togglePastWeeks}>
+            {pastWeeksOpen ? "HIDE COMPLETED WEEKS" : "SHOW COMPLETED WEEKS"}
+          </button>
+          {pastWeeksOpen &&
+            (pastWeeks === null ? (
+              <div style={S.dayHeader}>Loading…</div>
+            ) : pastWeeks.length === 0 ? (
+              <div style={S.logKcal}>No completed weeks yet.</div>
+            ) : (
+              pastWeeks.map((w) => {
+                const start = new Date(w.start + "T12:00");
+                const end = new Date(start);
+                end.setDate(end.getDate() + 6);
+                const fmt = (dt) => dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+                return (
+                  <div key={w.key} style={S.dayHeader}>
+                    <span>{fmt(start)} – {fmt(end)}</span>
+                    <span>{w.total.toLocaleString()} kcal</span>
+                  </div>
+                );
+              })
+            ))}
+        </div>
+      )}
 
       {/* week log */}
       {loaded && entries.length > 0 && (
@@ -634,6 +681,19 @@ const styles = {
   dialWrap: { position: "relative", width: 320, height: 320, marginTop: 48 },
   logWrap: { width: "100%", maxWidth: 360, marginTop: 40 },
   logTitle: { fontSize: 11, letterSpacing: 3, color: "#5A6B80", marginBottom: 12 },
+  pastWeeksBtn: {
+    width: "100%",
+    background: "none",
+    border: "1px dashed #2A3548",
+    borderRadius: 8,
+    color: "#5A6B80",
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: 2,
+    padding: "10px 0",
+    marginBottom: 12,
+    cursor: "pointer",
+  },
   dayGroup: { marginBottom: 18 },
   dayHeader: {
     display: "flex",

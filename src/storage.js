@@ -24,6 +24,22 @@ export async function load(key, fallback) {
   return fallback;
 }
 
+export async function loadPrefixed(prefix) {
+  try {
+    const { data, error } = await supabase
+      .from("kv")
+      .select("key, value")
+      .like("key", prefix + "%");
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error("loadPrefixed failed:", e);
+    return Object.keys(mem)
+      .filter((k) => k.startsWith(prefix))
+      .map((k) => ({ key: k, value: mem[k] }));
+  }
+}
+
 export async function save(key, value) {
   mem[key] = value;
   try {
