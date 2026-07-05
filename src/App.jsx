@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import { load, save, loadPrefixed } from "./storage";
 
 // ---------- data ----------
@@ -127,7 +128,11 @@ export default function QuickCal({ onSignOut }) {
   const [newKcal, setNewKcal] = useState("");
   const [pastWeeksOpen, setPastWeeksOpen] = useState(false);
   const [pastWeeks, setPastWeeks] = useState(null); // null = not fetched yet
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState("");
   const toastTimer = useRef(null);
+  const videoRef = useRef(null);
+  const scanControlsRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -142,6 +147,15 @@ export default function QuickCal({ onSignOut }) {
       setLoaded(true);
     })();
   }, [wk]);
+
+  useEffect(() => {
+    if (!openCat) {
+      scanControlsRef.current?.stop();
+      scanControlsRef.current = null;
+      setScanOpen(false);
+      setScanStatus("");
+    }
+  }, [openCat]);
 
   const used = entries.reduce((s, e) => s + e.kcal, 0);
   const remaining = budget - used;
@@ -222,10 +236,73 @@ export default function QuickCal({ onSignOut }) {
     setNewKcal("");
   }
 
+  function stopScan() {
+    scanControlsRef.current?.stop();
+    scanControlsRef.current = null;
+    setScanOpen(false);
+    setScanStatus("");
+  }
+
+  function startScan() {
+    setScanStatus("Point camera at barcode…");
+    setScanOpen(true);
+  }
+
+  useEffect(() => {
+    if (!scanOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const reader = new BrowserMultiFormatReader();
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: "environment" } },
+          videoRef.current,
+          (result) => {
+            if (result) lookupBarcode(result.getText());
+          }
+        );
+        if (cancelled) controls.stop();
+        else scanControlsRef.current = controls;
+      } catch (e) {
+        console.error("scan start failed:", e);
+        if (!cancelled) setScanStatus("Camera unavailable — check permissions.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scanOpen]);
+
+  async function lookupBarcode(code) {
+    scanControlsRef.current?.stop();
+    scanControlsRef.current = null;
+    setScanStatus(`Looking up ${code}…`);
+    try {
+      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+      const data = await res.json();
+      if (data.status !== 1 || !data.product) {
+        setScanStatus("Product not found. Try again or add manually.");
+        return;
+      }
+      const p = data.product;
+      const kcal = Math.round(
+        p.nutriments?.["energy-kcal_100g"] ?? p.nutriments?.["energy-kcal_serving"] ?? 0
+      );
+      setScanOpen(false);
+      setScanStatus("");
+      setNewName(p.product_name?.trim() || `Barcode ${code}`);
+      setNewKcal(kcal > 0 ? String(kcal) : "");
+      setAddFoodOpen(true);
+    } catch (e) {
+      console.error("lookup failed:", e);
+      setScanStatus("Lookup failed. Try again.");
+    }
+  }
+
   // ring positions
   const ringSource = openCat
     ? openCat === "custom"
-      ? [...customFoods, { addBtn: true }]
+      ? [...customFoods, { addBtn: true }, { scanBtn: true }]
       : FOODS[openCat]
     : [];
   const ringItems = ringSource.map((f, i, arr) => {
@@ -461,6 +538,21 @@ export default function QuickCal({ onSignOut }) {
                   <span style={{ fontSize: 22 }}>+</span>
                   <span style={S.foodName}>ADD</span>
                 </button>
+              ) : f.scanBtn ? (
+                <button
+                  key="__scan"
+                  style={{
+                    ...S.foodBtn,
+                    borderColor: CAT_META.custom.color,
+                    borderStyle: "dashed",
+                    color: CAT_META.custom.color,
+                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                  }}
+                  onClick={startScan}
+                >
+                  <span style={{ fontSize: 20 }}>📷</span>
+                  <span style={S.foodName}>SCAN</span>
+                </button>
               ) : openCat === "custom" ? (
                 <div
                   key={f.n}
@@ -523,6 +615,28 @@ export default function QuickCal({ onSignOut }) {
             )}
             <button style={S.closeX} onClick={() => setOpenCat(null)}>
               ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* barcode scanner */}
+      {scanOpen && (
+        <div style={S.overlay} onClick={stopScan}>
+          <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.sheetTitle}>Scan barcode</div>
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              style={{ width: "100%", borderRadius: 12, marginTop: 10, background: "#000" }}
+            />
+            <div style={{ ...S.sheetSub, marginTop: 10 }}>{scanStatus}</div>
+            <button
+              style={{ ...S.addBtn, background: "#1A2233", color: "#8FA3BC", marginTop: 16 }}
+              onClick={stopScan}
+            >
+              CANCEL
             </button>
           </div>
         </div>
