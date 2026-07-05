@@ -130,6 +130,11 @@ export default function QuickCal({ onSignOut }) {
   const [pastWeeks, setPastWeeks] = useState(null); // null = not fetched yet
   const [scanOpen, setScanOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
+  const [editFoodTarget, setEditFoodTarget] = useState(null); // original custom food being edited
+  const [editName, setEditName] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editKcal, setEditKcal] = useState("");
+  const [editStep, setEditStep] = useState("0.5"); // stepper increment per tap
   const toastTimer = useRef(null);
   const videoRef = useRef(null);
   const scanControlsRef = useRef(null);
@@ -197,6 +202,31 @@ export default function QuickCal({ onSignOut }) {
     await save("customFoods", cf);
     setConfirmDelFood(null);
     setPickedFood(null);
+  }
+
+  function openEditFood(f) {
+    setEditFoodTarget(f);
+    setEditName(f.n);
+    setEditUnit(f.u);
+    setEditKcal(String(f.k));
+    setEditStep(String(f.s || 0.5));
+  }
+
+  async function saveEditFood() {
+    const k = parseInt(editKcal, 10);
+    const s = parseFloat(editStep);
+    if (!editName.trim() || !(k > 0) || !editUnit.trim() || !(s > 0)) return;
+    const updated = {
+      n: editName.trim(),
+      u: editUnit.trim(),
+      k,
+      s,
+      e: editFoodTarget.e || "✦",
+    };
+    const cf = customFoods.map((f) => (f === editFoodTarget ? updated : f));
+    setCustomFoods(cf);
+    await save("customFoods", cf);
+    setEditFoodTarget(null);
   }
 
   async function saveBudget() {
@@ -575,10 +605,24 @@ export default function QuickCal({ onSignOut }) {
                     onClick={() => {
                       setPickedFood(f);
                       setQty(1);
+                      if (f.v) {
+                        const i = f.v.findIndex((x) => x.n === variantPrefs[f.n]);
+                        setVariantIdx(i >= 0 ? i : 0);
+                      }
                     }}
                   >
                     <span style={{ fontSize: 22 }}>{f.e}</span>
                     <span style={S.foodName}>{f.n}</span>
+                  </button>
+                  <button
+                    style={S.foodEditBadge}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditFood(f);
+                    }}
+                    aria-label={`Edit ${f.n}`}
+                  >
+                    ✎
                   </button>
                   <button
                     style={S.foodDelBadge}
@@ -672,6 +716,7 @@ export default function QuickCal({ onSignOut }) {
       {pickedFood && (() => {
         const variant = pickedFood.v ? pickedFood.v[variantIdx] : null;
         const unitK = variant ? variant.k : pickedFood.k;
+        const step = pickedFood.s || 0.5;
         const label = variant
           ? `${pickedFood.n} ${variant.n} ×${qty}`
           : `${pickedFood.n} ×${qty}`;
@@ -701,14 +746,14 @@ export default function QuickCal({ onSignOut }) {
                 </div>
               )}
               <div style={S.stepper}>
-                <button style={S.stepBtn} onClick={() => setQty(Math.max(0.5, qty - 0.5))}>
+                <button style={S.stepBtn} onClick={() => setQty(Math.max(step, qty - step))}>
                   −
                 </button>
                 <div style={S.qty}>
                   {qty}
                   <span style={S.qtyUnit}>× {pickedFood.u}</span>
                 </div>
-                <button style={S.stepBtn} onClick={() => setQty(qty + 0.5)}>
+                <button style={S.stepBtn} onClick={() => setQty(qty + step)}>
                   +
                 </button>
               </div>
@@ -765,6 +810,75 @@ export default function QuickCal({ onSignOut }) {
             >
               SAVE
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* edit custom food popup */}
+      {editFoodTarget && (
+        <div style={S.overlay} onClick={() => setEditFoodTarget(null)}>
+          <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.sheetTitle}>Edit food</div>
+            <input
+              autoFocus
+              placeholder="name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              style={{ ...S.bigInput, fontSize: 18, marginBottom: 0 }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <input
+                inputMode="numeric"
+                placeholder="kcal"
+                value={editKcal}
+                onChange={(e) => setEditKcal(e.target.value.replace(/\D/g, ""))}
+                style={{ ...S.bigInput, fontSize: 18, marginTop: 0, flex: 1 }}
+              />
+              <input
+                placeholder="portion (e.g. 100g)"
+                value={editUnit}
+                onChange={(e) => setEditUnit(e.target.value)}
+                style={{ ...S.bigInput, fontSize: 18, marginTop: 0, flex: 1 }}
+              />
+            </div>
+
+            <div style={S.divisionsLabel}>DIVISIONS (stepper increment per tap)</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input
+                inputMode="decimal"
+                placeholder="0.5"
+                value={editStep}
+                onChange={(e) => setEditStep(e.target.value.replace(/[^0-9.]/g, ""))}
+                style={{ ...S.bigInput, fontSize: 18, marginTop: 0, flex: 1 }}
+              />
+              <div style={S.chips}>
+                {[0.25, 0.5, 1].map((v) => (
+                  <button key={v} style={S.chip} onClick={() => setEditStep(String(v))}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button
+                style={{ ...S.addBtn, background: "#1A2233", color: "#8FA3BC" }}
+                onClick={() => setEditFoodTarget(null)}
+              >
+                CANCEL
+              </button>
+              <button
+                style={{
+                  ...S.addBtn,
+                  background: "#4FE3E0",
+                  opacity: editName.trim() && editKcal && editUnit.trim() && editStep ? 1 : 0.4,
+                }}
+                disabled={!editName.trim() || !editKcal || !editUnit.trim() || !editStep}
+                onClick={saveEditFood}
+              >
+                SAVE
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1040,6 +1154,31 @@ const styles = {
     background: "#1A2233",
     border: "1px solid #2A3548",
     color: "#FF6FB5",
+    fontFamily: mono,
+    fontSize: 10,
+    lineHeight: 1,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  divisionsLabel: {
+    fontSize: 10,
+    letterSpacing: 1,
+    color: "#5A6B80",
+    marginTop: 16,
+    textAlign: "left",
+  },
+  foodEditBadge: {
+    position: "absolute",
+    left: -4,
+    top: -4,
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    background: "#1A2233",
+    border: "1px solid #2A3548",
+    color: "#4FE3E0",
     fontFamily: mono,
     fontSize: 10,
     lineHeight: 1,
