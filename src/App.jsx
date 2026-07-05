@@ -103,6 +103,16 @@ function dayKey(d = new Date()) {
   return x.toISOString().slice(0, 10);
 }
 
+// buckets a timestamp's local hour into a named meal period
+function mealPeriod(t) {
+  const h = new Date(t).getHours();
+  if (h >= 5 && h < 12) return "Breakfast";
+  if (h >= 12 && h < 16) return "Lunch";
+  if (h >= 16 && h < 19) return "Afternoon snack";
+  if (h >= 19 && h < 22) return "Dinner";
+  return "Night snack";
+}
+
 // ---------- component ----------
 export default function QuickCal({ onSignOut }) {
   const wk = weekKey();
@@ -465,38 +475,64 @@ export default function QuickCal({ onSignOut }) {
             }, {})
           )
             .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-            .map(([d, list]) => (
-              <div key={d} style={S.dayGroup}>
-                <div style={S.dayHeader}>
-                  <span>
-                    {d === today
-                      ? "Today"
-                      : new Date(d + "T12:00").toLocaleDateString("en-GB", {
-                          weekday: "short",
-                          day: "numeric",
-                        })}
-                  </span>
-                  <span style={{ color: list.reduce((s, e) => s + e.kcal, 0) > budget / 7 ? "#FF5A5A" : "#7DE07D" }}>
-                    {list.reduce((s, e) => s + e.kcal, 0).toLocaleString()}
-                  </span>
-                </div>
-                {[...list].reverse().map((e) => (
-                  <div key={e.t} style={S.logRow}>
-                    <span style={S.logTime}>
-                      {new Date(e.t).toLocaleTimeString("en-GB", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+            .map(([d, list]) => {
+              const dayTotal = list.reduce((s, e) => s + e.kcal, 0);
+              const dailyBudget = Math.round(budget / 7);
+              const rev = [...list].reverse();
+              const groups = [];
+              for (const e of rev) {
+                const p = mealPeriod(e.t);
+                const last = groups[groups.length - 1];
+                if (last && last.period === p) last.entries.push(e);
+                else groups.push({ period: p, entries: [e] });
+              }
+              return (
+                <div key={d} style={S.dayGroup}>
+                  <div style={S.dayHeader}>
+                    <span>
+                      {d === today
+                        ? "Today"
+                        : new Date(d + "T12:00").toLocaleDateString("en-GB", {
+                            weekday: "short",
+                            day: "numeric",
+                          })}
                     </span>
-                    <span style={S.logLabel}>{e.label}</span>
-                    <span style={S.logKcal}>{e.kcal}</span>
-                    <button style={S.delBtn} onClick={() => setConfirmDel(e)} aria-label="Remove entry">
-                      ✕
-                    </button>
+                    <span
+                      style={{
+                        color:
+                          dayTotal <= dailyBudget
+                            ? "#7DE07D"
+                            : dayTotal <= dailyBudget * 1.05
+                            ? "#FFB454"
+                            : "#FF5A5A",
+                      }}
+                    >
+                      {dayTotal.toLocaleString()}/{dailyBudget.toLocaleString()}
+                    </span>
                   </div>
-                ))}
-              </div>
-            ))}
+                  {groups.map((g, gi) => (
+                    <div key={gi}>
+                      <div style={S.mealDivider}>{g.period}</div>
+                      {g.entries.map((e) => (
+                        <div key={e.t} style={S.logRow}>
+                          <span style={S.logTime}>
+                            {new Date(e.t).toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <span style={S.logLabel}>{e.label}</span>
+                          <span style={S.logKcal}>{e.kcal}</span>
+                          <button style={S.delBtn} onClick={() => setConfirmDel(e)} aria-label="Remove entry">
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
         </div>
       )}
 
@@ -1007,6 +1043,16 @@ const styles = {
     borderBottom: "1px solid #1A2233",
     paddingBottom: 5,
     marginBottom: 4,
+  },
+  mealDivider: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: "#5A6B80",
+    textTransform: "uppercase",
+    marginTop: 10,
+    marginBottom: 5,
+    paddingBottom: 4,
+    borderBottom: "1px solid #161B26",
   },
   logRow: {
     display: "flex",
