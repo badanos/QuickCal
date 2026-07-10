@@ -178,6 +178,15 @@ export default function QuickCal({ onSignOut }) {
   const todayUsed = entries.filter((e) => e.d === today).reduce((s, e) => s + e.kcal, 0);
   const pct = Math.min(1, used / Math.max(1, budget));
 
+  const dailyBudget = Math.round(budget / 7);
+  // cumulative over/under vs daily allowance, only counting days with entries
+  const vsGoal = Object.values(
+    entries.reduce((g, e) => {
+      g[e.d] = (g[e.d] || 0) + e.kcal;
+      return g;
+    }, {})
+  ).reduce((s, t) => s + (t - dailyBudget), 0);
+
   async function addEntry(kcal, label) {
     const e = [...entries, { t: Date.now(), d: dayKey(), kcal: Math.round(kcal), label }];
     setEntries(e);
@@ -404,6 +413,10 @@ export default function QuickCal({ onSignOut }) {
         <div style={S.subStats}>
           <span>used {used.toLocaleString()}</span>
           <span>today {todayUsed.toLocaleString()}</span>
+          <span style={{ color: vsGoal > 0 ? "#FF5A5A" : "#7DE07D" }}>
+            vs goal {vsGoal > 0 ? "+" : ""}
+            {vsGoal.toLocaleString()}
+          </span>
         </div>
       </div>
 
@@ -477,7 +490,6 @@ export default function QuickCal({ onSignOut }) {
             .sort((a, b) => (a[0] < b[0] ? 1 : -1))
             .map(([d, list]) => {
               const dayTotal = list.reduce((s, e) => s + e.kcal, 0);
-              const dailyBudget = Math.round(budget / 7);
               const rev = [...list].reverse();
               const groups = [];
               for (const e of rev) {
@@ -507,7 +519,8 @@ export default function QuickCal({ onSignOut }) {
                             : "#FF5A5A",
                       }}
                     >
-                      {dayTotal.toLocaleString()}/{dailyBudget.toLocaleString()}
+                      {dayTotal.toLocaleString()}/{dailyBudget.toLocaleString()}{" "}
+                      <span style={S.dayRemaining}>({(dailyBudget - dayTotal).toLocaleString()})</span>
                     </span>
                   </div>
                   {groups.map((g, gi) => (
@@ -1069,6 +1082,7 @@ const styles = {
     flexShrink: 0,
   },
   logKcal: { color: "#5A6B80", fontVariantNumeric: "tabular-nums" },
+  dayRemaining: { color: "#5A6B80", fontWeight: 400 },
   delBtn: {
     width: 28,
     height: 28,
