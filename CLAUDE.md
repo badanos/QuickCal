@@ -22,6 +22,7 @@ Visual style: dark, monospace, restrained — near-black bg (#0B0E14), panel #13
 - `week:YYYY-MM-DD` — array of entries for the week starting that **Sunday** (Israel weeks). Entry: `{ t: epoch_ms, d: "YYYY-MM-DD", kcal: int, label: string }`. Weeks "reset" simply because the key changes; old weeks remain stored.
 - `customFoods` — array of `{ n, u: "portion", k, e: "✦" }`, user-created foods shown in the CUSTOM ring.
 - `variantPrefs` — `{ [foodName]: variantName }`, last-picked fat-% per food, pre-selected next time (sticky defaults).
+- `stepPrefs` — `{ [foodName]: step }`, quantity-stepper increment per food (1 / 0.5 / 0.25), picked via pills in the amount popup (sticky).
 
 ## UI structure
 

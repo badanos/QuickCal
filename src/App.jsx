@@ -133,6 +133,7 @@ export default function QuickCal({ onSignOut }) {
   const [customFoods, setCustomFoods] = useState([]);
   const [variantIdx, setVariantIdx] = useState(0);
   const [variantPrefs, setVariantPrefs] = useState({});
+  const [stepPrefs, setStepPrefs] = useState({}); // { [foodName]: stepper increment }
   const [addFoodOpen, setAddFoodOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newKcal, setNewKcal] = useState("");
@@ -155,10 +156,12 @@ export default function QuickCal({ onSignOut }) {
       const e = await load("week:" + wk, []);
       const cf = await load("customFoods", []);
       const vp = await load("variantPrefs", {});
+      const sp = await load("stepPrefs", {});
       setBudget(b);
       setEntries(e);
       setCustomFoods(cf);
       setVariantPrefs(vp);
+      setStepPrefs(sp);
       setLoaded(true);
     })();
   }, [wk]);
@@ -765,7 +768,7 @@ export default function QuickCal({ onSignOut }) {
       {pickedFood && (() => {
         const variant = pickedFood.v ? pickedFood.v[variantIdx] : null;
         const unitK = variant ? variant.k : pickedFood.k;
-        const step = pickedFood.s || 0.5;
+        const step = stepPrefs[pickedFood.n] || pickedFood.s || 0.5;
         const label = variant
           ? `${pickedFood.n} ${variant.n} ×${qty}`
           : `${pickedFood.n} ×${qty}`;
@@ -805,6 +808,21 @@ export default function QuickCal({ onSignOut }) {
                 <button style={S.stepBtn} onClick={() => setQty(qty + step)}>
                   +
                 </button>
+              </div>
+              <div style={{ ...S.pillRow, marginTop: 12, marginBottom: 18, gap: 10 }}>
+                {[1, 0.5, 0.25].map((v) => (
+                  <button
+                    key={v}
+                    style={{ ...S.pill, padding: "8px 16px", ...(step === v ? S.pillActive : {}) }}
+                    onClick={() => {
+                      const sp = { ...stepPrefs, [pickedFood.n]: v };
+                      setStepPrefs(sp);
+                      save("stepPrefs", sp);
+                    }}
+                  >
+                    ±{v}
+                  </button>
+                ))}
               </div>
               <button
                 style={S.addBtn}
