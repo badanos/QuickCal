@@ -182,10 +182,10 @@ export default function QuickCal({ onSignOut }) {
   const pct = Math.min(1, used / Math.max(1, budget));
 
   const dailyBudget = Math.round(budget / 7);
-  // cumulative over/under vs daily allowance, only counting days with entries
+  // cumulative over/under vs daily allowance across completed logged days (today excluded)
   const vsGoal = Object.values(
     entries.reduce((g, e) => {
-      g[e.d] = (g[e.d] || 0) + e.kcal;
+      if (e.d !== today) g[e.d] = (g[e.d] || 0) + e.kcal;
       return g;
     }, {})
   ).reduce((s, t) => s + (t - dailyBudget), 0);
