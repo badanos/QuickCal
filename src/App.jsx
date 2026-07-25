@@ -141,6 +141,7 @@ export default function QuickCal({ onSignOut }) {
   const [pastWeeks, setPastWeeks] = useState(null); // null = not fetched yet
   const [scanOpen, setScanOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
+  const [scanMode, setScanMode] = useState("food"); // "food" saves to CUSTOM, "entry" logs once
   const [addDayTarget, setAddDayTarget] = useState(null); // day key to add a back-dated entry to
   const [pastName, setPastName] = useState("");
   const [pastKcal, setPastKcal] = useState("");
@@ -304,7 +305,8 @@ export default function QuickCal({ onSignOut }) {
     setScanStatus("");
   }
 
-  function startScan() {
+  function startScan(mode) {
+    setScanMode(mode);
     setScanStatus("Point camera at barcode…");
     setScanOpen(true);
   }
@@ -346,12 +348,27 @@ export default function QuickCal({ onSignOut }) {
         return;
       }
       const p = data.product;
-      const kcal = Math.round(
-        p.nutriments?.["energy-kcal_100g"] ?? p.nutriments?.["energy-kcal_serving"] ?? 0
-      );
+      const per100 = p.nutriments?.["energy-kcal_100g"];
+      const kcal = Math.round(per100 ?? p.nutriments?.["energy-kcal_serving"] ?? 0);
+      const name = p.product_name?.trim() || `Barcode ${code}`;
+
+      // one-off log: hand off to the amount popup so the quantity stepper applies
+      if (scanMode === "entry") {
+        if (!(kcal > 0)) {
+          setScanStatus("No calorie data for that product.");
+          return;
+        }
+        setScanOpen(false);
+        setScanStatus("");
+        setCustomOpen(false);
+        setQty(1);
+        setPickedFood({ n: name, u: per100 != null ? "100g" : "serving", k: kcal, e: "📷" });
+        return;
+      }
+
       setScanOpen(false);
       setScanStatus("");
-      setNewName(p.product_name?.trim() || `Barcode ${code}`);
+      setNewName(name);
       setNewKcal(kcal > 0 ? String(kcal) : "");
       setAddFoodOpen(true);
     } catch (e) {
@@ -687,7 +704,7 @@ export default function QuickCal({ onSignOut }) {
                     color: CAT_META.custom.color,
                     transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
                   }}
-                  onClick={startScan}
+                  onClick={() => startScan("food")}
                 >
                   <span style={{ fontSize: 20 }}>📷</span>
                   <span style={S.foodName}>SCAN</span>
@@ -775,7 +792,7 @@ export default function QuickCal({ onSignOut }) {
 
       {/* barcode scanner */}
       {scanOpen && (
-        <div style={S.overlay} onClick={stopScan}>
+        <div style={{ ...S.overlay, zIndex: 20 }} onClick={stopScan}>
           <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
             <div style={S.sheetTitle}>Scan barcode</div>
             <video
@@ -1027,6 +1044,9 @@ export default function QuickCal({ onSignOut }) {
                 </button>
               ))}
             </div>
+            <button style={S.scanEntryBtn} onClick={() => startScan("entry")}>
+              📷 SCAN BARCODE
+            </button>
             <button
               style={{ ...S.addBtn, opacity: customVal ? 1 : 0.4 }}
               disabled={!customVal}
@@ -1158,6 +1178,19 @@ const styles = {
   },
   logKcal: { color: "#5A6B80", fontVariantNumeric: "tabular-nums" },
   dayRemaining: { color: "#5A6B80", fontWeight: 400 },
+  scanEntryBtn: {
+    width: "100%",
+    background: "none",
+    border: "1px dashed #2A3548",
+    borderRadius: 8,
+    color: "#5A6B80",
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: 2,
+    padding: "10px 0",
+    marginTop: 16,
+    cursor: "pointer",
+  },
   dayAddBtn: {
     width: 18,
     height: 18,
