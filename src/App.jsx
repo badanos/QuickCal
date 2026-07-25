@@ -125,6 +125,7 @@ export default function QuickCal({ onSignOut }) {
   const [qty, setQty] = useState(1);
   const [customOpen, setCustomOpen] = useState(false);
   const [customVal, setCustomVal] = useState("");
+  const [customName, setCustomName] = useState("");
   const [budgetEdit, setBudgetEdit] = useState(false);
   const [budgetVal, setBudgetVal] = useState("");
   const [toast, setToast] = useState(null); // last added entry index
@@ -142,6 +143,7 @@ export default function QuickCal({ onSignOut }) {
   const [scanOpen, setScanOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
   const [scanMode, setScanMode] = useState("food"); // "food" saves to CUSTOM, "entry" logs once
+  const [stepPillsOpen, setStepPillsOpen] = useState(false);
   const [addDayTarget, setAddDayTarget] = useState(null); // day key to add a back-dated entry to
   const [pastName, setPastName] = useState("");
   const [pastKcal, setPastKcal] = useState("");
@@ -179,6 +181,10 @@ export default function QuickCal({ onSignOut }) {
     }
   }, [openCat]);
 
+  useEffect(() => {
+    setStepPillsOpen(false);
+  }, [pickedFood]);
+
   const used = entries.reduce((s, e) => s + e.kcal, 0);
   const remaining = budget - used;
   const today = dayKey();
@@ -186,13 +192,13 @@ export default function QuickCal({ onSignOut }) {
   const pct = Math.min(1, used / Math.max(1, budget));
 
   const dailyBudget = Math.round(budget / 7);
-  // cumulative over/under vs daily allowance across completed logged days (today excluded)
-  const vsGoal = Object.values(
+  // calories banked across completed logged days (today excluded); positive = under allowance
+  const bank = Object.values(
     entries.reduce((g, e) => {
       if (e.d !== today) g[e.d] = (g[e.d] || 0) + e.kcal;
       return g;
     }, {})
-  ).reduce((s, t) => s + (t - dailyBudget), 0);
+  ).reduce((s, t) => s + (dailyBudget - t), 0);
 
   // `at` back-dates the entry to that day key; timestamps land at noon, nudged to stay unique
   async function addEntry(kcal, label, at) {
@@ -206,6 +212,7 @@ export default function QuickCal({ onSignOut }) {
     setQty(1);
     setCustomOpen(false);
     setCustomVal("");
+    setCustomName("");
     setAddDayTarget(null);
     setPastName("");
     setPastKcal("");
@@ -442,9 +449,9 @@ export default function QuickCal({ onSignOut }) {
         <div style={S.subStats}>
           <span>used {used.toLocaleString()}</span>
           <span>today {todayUsed.toLocaleString()}</span>
-          <span style={{ color: vsGoal > 0 ? "#FF5A5A" : "#7DE07D" }}>
-            vs goal {vsGoal > 0 ? "+" : ""}
-            {vsGoal.toLocaleString()}
+          <span style={{ color: bank < 0 ? "#FF5A5A" : "#7DE07D" }}>
+            bank {bank > 0 ? "+" : ""}
+            {bank.toLocaleString()}
           </span>
         </div>
       </div>
@@ -883,21 +890,28 @@ export default function QuickCal({ onSignOut }) {
                   +
                 </button>
               </div>
-              <div style={{ ...S.pillRow, marginTop: 12, marginBottom: 18, gap: 10 }}>
-                {[1, 0.5, 0.25].map((v) => (
-                  <button
-                    key={v}
-                    style={{ ...S.pill, padding: "8px 16px", ...(step === v ? S.pillActive : {}) }}
-                    onClick={() => {
-                      const sp = { ...stepPrefs, [pickedFood.n]: v };
-                      setStepPrefs(sp);
-                      save("stepPrefs", sp);
-                    }}
-                  >
-                    ±{v}
-                  </button>
-                ))}
-              </div>
+              {stepPillsOpen ? (
+                <div style={{ ...S.pillRow, marginTop: 12, marginBottom: 18, gap: 10 }}>
+                  {[1, 0.5, 0.25].map((v) => (
+                    <button
+                      key={v}
+                      style={{ ...S.pill, padding: "8px 16px", ...(step === v ? S.pillActive : {}) }}
+                      onClick={() => {
+                        const sp = { ...stepPrefs, [pickedFood.n]: v };
+                        setStepPrefs(sp);
+                        save("stepPrefs", sp);
+                        setStepPillsOpen(false);
+                      }}
+                    >
+                      ±{v}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button style={S.stepToggle} onClick={() => setStepPillsOpen(true)}>
+                  step ±{step} ▾
+                </button>
+              )}
               <button
                 style={S.addBtn}
                 onClick={async () => {
@@ -1030,12 +1044,18 @@ export default function QuickCal({ onSignOut }) {
           <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
             <div style={S.sheetTitle}>Add calories</div>
             <input
+              placeholder="Custom"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              style={{ ...S.bigInput, fontSize: 18, margin: "18px 0 0" }}
+            />
+            <input
               autoFocus
               inputMode="numeric"
               placeholder="kcal"
               value={customVal}
               onChange={(e) => setCustomVal(e.target.value.replace(/\D/g, ""))}
-              style={S.bigInput}
+              style={{ ...S.bigInput, margin: "10px 0 12px" }}
             />
             <div style={S.chips}>
               {[100, 200, 300, 500].map((v) => (
@@ -1050,7 +1070,7 @@ export default function QuickCal({ onSignOut }) {
             <button
               style={{ ...S.addBtn, opacity: customVal ? 1 : 0.4 }}
               disabled={!customVal}
-              onClick={() => addEntry(parseInt(customVal, 10), "custom")}
+              onClick={() => addEntry(parseInt(customVal, 10), customName.trim() || "Custom")}
             >
               ADD {customVal || 0} KCAL
             </button>
@@ -1178,6 +1198,18 @@ const styles = {
   },
   logKcal: { color: "#5A6B80", fontVariantNumeric: "tabular-nums" },
   dayRemaining: { color: "#5A6B80", fontWeight: 400 },
+  stepToggle: {
+    display: "block",
+    margin: "12px auto 18px",
+    padding: 0,
+    background: "none",
+    border: "none",
+    color: "#5A6B80",
+    fontFamily: mono,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    cursor: "pointer",
+  },
   scanEntryBtn: {
     width: "100%",
     background: "none",
