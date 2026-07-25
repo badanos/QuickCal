@@ -141,6 +141,9 @@ export default function QuickCal({ onSignOut }) {
   const [pastWeeks, setPastWeeks] = useState(null); // null = not fetched yet
   const [scanOpen, setScanOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
+  const [addDayTarget, setAddDayTarget] = useState(null); // day key to add a back-dated entry to
+  const [pastName, setPastName] = useState("");
+  const [pastKcal, setPastKcal] = useState("");
   const [editFoodTarget, setEditFoodTarget] = useState(null); // original custom food being edited
   const [editName, setEditName] = useState("");
   const [editUnit, setEditUnit] = useState("");
@@ -190,8 +193,11 @@ export default function QuickCal({ onSignOut }) {
     }, {})
   ).reduce((s, t) => s + (t - dailyBudget), 0);
 
-  async function addEntry(kcal, label) {
-    const e = [...entries, { t: Date.now(), d: dayKey(), kcal: Math.round(kcal), label }];
+  // `at` back-dates the entry to that day key; timestamps land at noon, nudged to stay unique
+  async function addEntry(kcal, label, at) {
+    let t = at ? new Date(at + "T12:00").getTime() : Date.now();
+    while (entries.some((x) => x.t === t)) t++;
+    const e = [...entries, { t, d: at || dayKey(), kcal: Math.round(kcal), label }];
     setEntries(e);
     await save("week:" + wk, e);
     setOpenCat(null);
@@ -199,6 +205,9 @@ export default function QuickCal({ onSignOut }) {
     setQty(1);
     setCustomOpen(false);
     setCustomVal("");
+    setAddDayTarget(null);
+    setPastName("");
+    setPastKcal("");
     setToast({ kcal: Math.round(kcal), label });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 4000);
@@ -493,7 +502,7 @@ export default function QuickCal({ onSignOut }) {
             .sort((a, b) => (a[0] < b[0] ? 1 : -1))
             .map(([d, list]) => {
               const dayTotal = list.reduce((s, e) => s + e.kcal, 0);
-              const rev = [...list].reverse();
+              const rev = [...list].sort((a, b) => b.t - a.t);
               const groups = [];
               for (const e of rev) {
                 const p = mealPeriod(e.t);
@@ -504,13 +513,20 @@ export default function QuickCal({ onSignOut }) {
               return (
                 <div key={d} style={S.dayGroup}>
                   <div style={S.dayHeader}>
-                    <span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       {d === today
                         ? "Today"
                         : new Date(d + "T12:00").toLocaleDateString("en-GB", {
                             weekday: "short",
                             day: "numeric",
                           })}
+                      <button
+                        style={S.dayAddBtn}
+                        onClick={() => setAddDayTarget(d)}
+                        aria-label="Add entry to this day"
+                      >
+                        +
+                      </button>
                     </span>
                     <span
                       style={{
@@ -549,6 +565,47 @@ export default function QuickCal({ onSignOut }) {
                 </div>
               );
             })}
+        </div>
+      )}
+
+      {/* back-dated entry popup */}
+      {addDayTarget && (
+        <div style={S.overlay} onClick={() => setAddDayTarget(null)}>
+          <div style={S.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={S.sheetTitle}>
+              Add entry
+              <span style={S.sheetSub}>
+                {addDayTarget === today
+                  ? "Today"
+                  : new Date(addDayTarget + "T12:00").toLocaleDateString("en-GB", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "short",
+                    })}
+              </span>
+            </div>
+            <input
+              placeholder="Custom"
+              value={pastName}
+              onChange={(e) => setPastName(e.target.value)}
+              style={{ ...S.bigInput, fontSize: 18, marginBottom: 0 }}
+            />
+            <input
+              autoFocus
+              inputMode="numeric"
+              placeholder="kcal"
+              value={pastKcal}
+              onChange={(e) => setPastKcal(e.target.value.replace(/\D/g, ""))}
+              style={{ ...S.bigInput, fontSize: 18, marginTop: 10 }}
+            />
+            <button
+              style={{ ...S.addBtn, opacity: pastKcal ? 1 : 0.4 }}
+              disabled={!pastKcal}
+              onClick={() => addEntry(parseInt(pastKcal, 10), pastName.trim() || "Custom", addDayTarget)}
+            >
+              ADD {pastKcal ? parseInt(pastKcal, 10).toLocaleString() : ""} KCAL
+            </button>
+          </div>
         </div>
       )}
 
@@ -1101,6 +1158,23 @@ const styles = {
   },
   logKcal: { color: "#5A6B80", fontVariantNumeric: "tabular-nums" },
   dayRemaining: { color: "#5A6B80", fontWeight: 400 },
+  dayAddBtn: {
+    width: 18,
+    height: 18,
+    padding: 0,
+    flexShrink: 0,
+    borderRadius: "50%",
+    background: "none",
+    border: "1px solid #2A3548",
+    color: "#5A6B80",
+    fontFamily: mono,
+    fontSize: 12,
+    lineHeight: 1,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   delBtn: {
     width: 28,
     height: 28,
