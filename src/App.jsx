@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { load, save, loadPrefixed } from "./storage";
+import { load, save, loadPrefixed, LoadFailed } from "./storage";
 
 // ---------- data ----------
 const FOODS = {
@@ -119,6 +119,10 @@ export default function QuickCal({ onSignOut }) {
   const [budget, setBudget] = useState(DEFAULT_BUDGET);
   const [entries, setEntries] = useState([]); // {t, kcal, label}
   const [loaded, setLoaded] = useState(false);
+  // set when the backend could not be read at all; blocks every write, because
+  // saving on top of an unread week is what silently destroys it
+  const [loadError, setLoadError] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const [openCat, setOpenCat] = useState(null); // 'protein' | 'carb' | 'other'
   const [pickedFood, setPickedFood] = useState(null);
@@ -157,20 +161,35 @@ export default function QuickCal({ onSignOut }) {
   const scanControlsRef = useRef(null);
 
   useEffect(() => {
+    let stale = false;
     (async () => {
-      const b = await load("budget", DEFAULT_BUDGET);
-      const e = await load("week:" + wk, []);
-      const cf = await load("customFoods", []);
-      const vp = await load("variantPrefs", {});
-      const sp = await load("stepPrefs", {});
-      setBudget(b);
-      setEntries(e);
-      setCustomFoods(cf);
-      setVariantPrefs(vp);
-      setStepPrefs(sp);
-      setLoaded(true);
+      setLoaded(false);
+      setLoadError(false);
+      try {
+        const b = await load("budget", DEFAULT_BUDGET);
+        const e = await load("week:" + wk, []);
+        const cf = await load("customFoods", []);
+        const vp = await load("variantPrefs", {});
+        const sp = await load("stepPrefs", {});
+        if (stale) return;
+        setBudget(b);
+        setEntries(e);
+        setCustomFoods(cf);
+        setVariantPrefs(vp);
+        setStepPrefs(sp);
+        setLoaded(true);
+      } catch (err) {
+        if (stale) return;
+        if (!(err instanceof LoadFailed)) throw err;
+        // nothing readable from the backend and no local mirror: stay unloaded
+        // so no write can overwrite whatever is actually stored
+        setLoadError(true);
+      }
     })();
-  }, [wk]);
+    return () => {
+      stale = true;
+    };
+  }, [wk, reloadTick]);
 
   useEffect(() => {
     if (!openCat) {
@@ -202,6 +221,7 @@ export default function QuickCal({ onSignOut }) {
 
   // `at` back-dates the entry to that day key; timestamps land at noon, nudged to stay unique
   async function addEntry(kcal, label, at) {
+    if (!loaded) return; // never write on top of a week we haven't read
     let t = at ? new Date(at + "T12:00").getTime() : Date.now();
     while (entries.some((x) => x.t === t)) t++;
     const e = [...entries, { t, d: at || dayKey(), kcal: Math.round(kcal), label }];
@@ -222,6 +242,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function undo() {
+    if (!loaded) return;
     const e = entries.slice(0, -1);
     setEntries(e);
     await save("week:" + wk, e);
@@ -229,6 +250,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function removeEntry(t) {
+    if (!loaded) return;
     const e = entries.filter((x) => x.t !== t);
     setEntries(e);
     await save("week:" + wk, e);
@@ -236,6 +258,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function removeCustomFood(name) {
+    if (!loaded) return;
     const cf = customFoods.filter((f) => f.n !== name);
     setCustomFoods(cf);
     await save("customFoods", cf);
@@ -252,6 +275,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function saveEditFood() {
+    if (!loaded) return;
     const k = parseInt(editKcal, 10);
     const s = parseFloat(editStep);
     if (!editName.trim() || !(k > 0) || !editUnit.trim() || !(s > 0)) return;
@@ -269,6 +293,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function saveBudget() {
+    if (!loaded) return;
     const v = parseInt(budgetVal, 10);
     if (v > 0) {
       setBudget(v);
@@ -295,6 +320,7 @@ export default function QuickCal({ onSignOut }) {
   }
 
   async function saveNewFood() {
+    if (!loaded) return;
     const k = parseInt(newKcal, 10);
     if (!newName.trim() || !(k > 0)) return;
     const cf = [...customFoods, { n: newName.trim(), u: "portion", k, e: "✦" }];
@@ -446,44 +472,62 @@ export default function QuickCal({ onSignOut }) {
             }}
           />
         </div>
-        <div style={S.subStats}>
-          <span>used {used.toLocaleString()}</span>
-          <span>today {todayUsed.toLocaleString()}</span>
-          <span style={{ color: bank < 0 ? "#FF5A5A" : "#7DE07D" }}>
-            bank {bank > 0 ? "+" : ""}
-            {bank.toLocaleString()}
-          </span>
-        </div>
+        {loaded && (
+          <div style={S.subStats}>
+            <span>used {used.toLocaleString()}</span>
+            <span>today {todayUsed.toLocaleString()}</span>
+            <span style={{ color: bank < 0 ? "#FF5A5A" : "#7DE07D" }}>
+              bank {bank > 0 ? "+" : ""}
+              {bank.toLocaleString()}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* offline / unread state — logging stays shut until we know what's stored */}
+      {loadError && (
+        <div style={S.loadErr}>
+          <div>COULDN'T REACH YOUR DATA</div>
+          <div style={S.loadErrHint}>
+            Logging is off until it loads, so nothing overwrites this week.
+          </div>
+          <button style={S.retryBtn} onClick={() => setReloadTick((n) => n + 1)}>
+            RETRY
+          </button>
+        </div>
+      )}
 
       {/* main dial */}
-      <div style={S.dialWrap}>
-        <button style={S.centerBtn} onClick={() => setCustomOpen(true)} aria-label="Add calories">
-          <span style={S.centerPlus}>+</span>
-          <span style={S.centerLabel}>KCAL</span>
-        </button>
+      {!loaded && !loadError && <div style={S.dialLoading}>LOADING…</div>}
+      {loaded && (
+        <div style={S.dialWrap}>
+          <button style={S.centerBtn} onClick={() => setCustomOpen(true)} aria-label="Add calories">
+            <span style={S.centerPlus}>+</span>
+            <span style={S.centerLabel}>KCAL</span>
+          </button>
 
-        {["protein", "carb", "veg", "other", "custom"].map((c, i) => {
-          const a = (-90 + i * 72) * (Math.PI / 180);
-          const x = Math.cos(a) * 118;
-          const y = Math.sin(a) * 118;
-          const m = CAT_META[c];
-          return (
-            <button
-              key={c}
-              onClick={() => setOpenCat(c)}
-              style={{
-                ...S.catBtn,
-                borderColor: m.color,
-                color: m.color,
-                transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-              }}
-            >
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
+          {["protein", "carb", "veg", "other", "custom"].map((c, i) => {
+            const a = (-90 + i * 72) * (Math.PI / 180);
+            const x = Math.cos(a) * 118;
+            const y = Math.sin(a) * 118;
+            const m = CAT_META[c];
+            return (
+              <button
+                key={c}
+                onClick={() => setOpenCat(c)}
+                style={{
+                  ...S.catBtn,
+                  borderColor: m.color,
+                  color: m.color,
+                  transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                }}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* completed weeks */}
       {loaded && (
@@ -1146,6 +1190,47 @@ const styles = {
     marginTop: 6,
   },
   dialWrap: { position: "relative", width: 320, height: 320, marginTop: 48 },
+  dialLoading: {
+    width: 320,
+    height: 320,
+    marginTop: 48,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#5A6B80",
+    fontSize: 11,
+    letterSpacing: 3,
+  },
+  loadErr: {
+    width: "100%",
+    maxWidth: 360,
+    marginTop: 40,
+    padding: 16,
+    border: "1px solid #FF5A5A",
+    borderRadius: 8,
+    color: "#FF5A5A",
+    fontSize: 12,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  loadErrHint: {
+    color: "#5A6B80",
+    fontSize: 11,
+    letterSpacing: 0,
+    lineHeight: 1.5,
+    marginTop: 8,
+  },
+  retryBtn: {
+    marginTop: 14,
+    background: "none",
+    border: "1px solid #FF5A5A",
+    borderRadius: 8,
+    color: "#FF5A5A",
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: 2,
+    padding: "8px 20px",
+  },
   logWrap: { width: "100%", maxWidth: 360, marginTop: 40 },
   logTitle: { fontSize: 11, letterSpacing: 3, color: "#5A6B80", marginBottom: 12 },
   pastWeeksBtn: {

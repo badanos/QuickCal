@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./supabase";
+import { clearMirror } from "./storage";
 import QuickCal from "./App";
 
 const mono = "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
@@ -69,7 +70,14 @@ function Gate() {
     );
   }
 
-  return <QuickCal onSignOut={() => supabase.auth.signOut()} />;
+  return (
+    <QuickCal
+      onSignOut={() => {
+        clearMirror();
+        supabase.auth.signOut();
+      }}
+    />
+  );
 }
 
 function Center({ children }) {

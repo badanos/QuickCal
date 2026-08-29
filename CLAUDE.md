@@ -11,7 +11,10 @@ Visual style: dark, monospace, restrained — near-black bg (#0B0E14), panel #13
 ## Architecture
 
 - `src/App.jsx` — the whole app, one component. Intentionally a single file; do not split into components/ until it actually hurts.
-- `src/storage.js` — the ONLY persistence seam. `load(key, fallback)` / `save(key, value)` over a Supabase `kv` table, with in-memory fallback so flaky network never blocks logging. Any storage backend change happens here and nowhere else.
+- `src/storage.js` — the ONLY persistence seam. `load(key, fallback)` / `save(key, value)` over a Supabase `kv` table, mirrored to localStorage (`quickcal:` prefix) as last-known-good. Any storage backend change happens here and nowhere else.
+  - **`load` distinguishes "no row" from "couldn't read".** It returns `fallback` only when the row genuinely doesn't exist; on a backend failure it returns the local mirror, and if there's no mirror it throws `LoadFailed`. It must never resolve to an empty value it isn't sure about — a silent fallback-to-`[]` on a flaky read is what destroyed a full week of entries on 2026-08-29.
+  - **Nothing writes before a successful load.** `loaded` gates every mutator in `App.jsx`, and the dial only renders once loaded, so a tap can't race the initial fetch. Keep any new write path behind that gate.
+  - Known gap: `save` is still a last-write-wins upsert with no compare-and-swap, and a failed save is only kept in the mirror (never retried).
 - `src/supabase.js` — client from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (.env, gitignored).
 - `src/main.jsx` — auth gate: GitHub OAuth via Supabase (`signInWithOAuth`), renders App when session exists, passes `onSignOut`.
 - `supabase-setup.sql` — creates `kv` table: PK (user_id, key), value jsonb, RLS policies scoping all ops to `auth.uid()`. user_id defaults to `auth.uid()` so the client never sends it.
